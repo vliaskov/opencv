@@ -1,10 +1,8 @@
-#include "opencv2/core.hpp"
-#include <opencv2/core/utility.hpp>
-#include "opencv2/imgproc.hpp"
-#include "opencv2/calib3d.hpp"
-#include "opencv2/imgcodecs.hpp"
-#include "opencv2/videoio.hpp"
-#include "opencv2/highgui.hpp"
+#include "opencv2/core/core.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/calib3d/calib3d.hpp"
+#include "opencv2/video/video.hpp"
+#include "opencv2/highgui/highgui.hpp"
 
 #include <cctype>
 #include <stdio.h>
@@ -130,7 +128,7 @@ static void calcChessboardCorners(Size boardSize, float squareSize, vector<Point
         break;
 
       default:
-        CV_Error(Error::StsBadArg, "Unknown pattern type\n");
+        CV_Error(CV_StsBadArg, "Unknown pattern type\n");
     }
 }
 
@@ -362,12 +360,12 @@ int main( int argc, char** argv )
         cameraId = parser.get<int>("@input_data");
     else
         inputFilename = parser.get<string>("@input_data");
-    if (!parser.check())
+    /*if (!parser.check())
     {
         help();
         parser.printErrors();
         return -1;
-    }
+    }*/
     if ( squareSize <= 0 )
         return fprintf( stderr, "Invalid board square width\n" ), -1;
     if ( nframes <= 3 )
