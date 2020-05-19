@@ -59,6 +59,7 @@ class App:
         while True:
             _ret, frame = self.cam.read()
             frame_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+            #visorig = frame.copy()
             vis = frame.copy()
             if self.p0 is not None:
                 p2, trace_status = checkedTrace(self.gray1, frame_gray, self.p1)

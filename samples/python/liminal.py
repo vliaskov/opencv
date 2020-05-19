@@ -44,6 +44,17 @@ feature_params = dict( maxCorners = 500,
                        qualityLevel = 0.3,
                        minDistance = 7,
                        blockSize = 7 )
+# Motion detection
+# Number of frames to pass before changing the frame to compare the current
+# frame against
+FRAMES_TO_PERSIST = 10
+# Minimum boxed area for a detected motion to count as actual motion
+# Use to filter out noise or small objects
+MIN_SIZE_FOR_MOVEMENT = 1000
+MAX_SIZE_FOR_MOVEMENT = 20000
+# Minimum length of time where no motion is detected it should take
+#(in program cycles) for the program to declare that there is no movement
+MOVEMENT_DETECTED_PERSISTENCE = 100
 
 class App:
     def __init__(self, video_src):
@@ -52,14 +63,88 @@ class App:
         self.tracks = []
         self.cam = video.create_capture(video_src)
         self.frame_idx = 0
+        self.game_state = 0
+
+    def set_interactions(self):
+        areas = []
+        switcher = {
+            0: [Vector(120, 100)] 
+	}
+        areas = switcher.get(self.game_state)
+        return areas
+        
+    def check_interactions(self, areas, motioncenters, dist):
+        activated = []
+        idle = areas
+        for area in areas:
+            for c in motioncenters:
+                #if np.sqrt(np.sum((area - c) ** 2)) < dist:
+                if (abs(area.x - c.x) < dist) and (abs(area.y - c.y) < dist):
+                    activated.append(area)
+                    idle.remove(area)
+        return activated, idle
+                 
+    def draw_idle_interactions(self, image, idleareas, radius):
+        for area in idleareas:
+            cv.circle(image, (area.x, area.y), radius, (255, 0, 0), 1, 8, 0)
 
     def run(self):
+	# Init frame variables for motion detection
+        first_frame = None
+        next_frame = None
+        delay_counter = 0
+        movement_persistent_counter = 0
         while True:
             _ret, frame = self.cam.read()
             frame_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
             vis = frame.copy()
 
+            # Set transient motion detected as false
+            transient_movement_flag = False
+
             gray = cv.cvtColor(vis, cv.COLOR_BGR2GRAY)
+
+    	    # If the first frame is nothing, initialise it
+            if first_frame is None: first_frame = gray
+            delay_counter += 1
+	    # Otherwise, set the first frame to compare as the previous frame
+	    # But only if the counter reaches the appriopriate value
+	    # The delay is to allow relatively slow motions to be counted as large
+	    # motions if they're spread out far enough
+            if delay_counter > FRAMES_TO_PERSIST:
+                delay_counter = 0
+                first_frame = next_frame
+	    # Set the next frame to compare (the current frame)
+            next_frame = gray
+	    # Compare the two frames, find the difference
+            frame_delta = cv.absdiff(first_frame, next_frame)
+            thresh = cv.threshold(frame_delta, 25, 255, cv.THRESH_BINARY)[1]
+            # Fill in holes via dilate(), and find contours of the thesholds
+            thresh = cv.dilate(thresh, None, iterations = 2)
+            cnts, _ = cv.findContours(thresh.copy(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+            # loop over the contours
+            for c in cnts:
+                # Save the coordinates of all found contours
+                (x, y, w, h) = cv.boundingRect(c)
+                # If the contour is too small, ignore it, otherwise, there's transient
+                # movement
+                if cv.contourArea(c) > MIN_SIZE_FOR_MOVEMENT: # and cv.contourArea(c) < MAX_SIZE_FOR_MOVEMENT:
+                    #if cv.contourArea(c) > MAX_SIZE_FOR_MOVEMENT:
+                    #    print("Large Contour found")
+                    transient_movement_flag = True
+                    # Draw a rectangle around big enough movements
+                    #cv.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cvlist = [c]
+                    cv.drawContours(vis, cvlist, 0, (0, 0, 255), 3 )
+
+	    # The moment something moves momentarily, reset the persistent
+	    # movement timer.
+            if transient_movement_flag == True:
+                movement_persistent_flag = True
+                movement_persistent_counter = MOVEMENT_DETECTED_PERSISTENCE
+
+	    # The canny filter is for edge detection
             thrs1 = 2500;#cv.getTrackbarPos('thrs1', 'edge')
             thrs2 = 4500;#cv.getTrackbarPos('thrs2', 'edge')
             edge = cv.Canny(gray, thrs1, thrs2, apertureSize=5)
@@ -76,8 +161,11 @@ class App:
                 burst = 0;
                 circlex = 120;
                 circley = 100;
-                circleradius = 30;
-
+                circleradius = 50;
+                circlevec = Vector(120, 100)
+                interactions = self.set_interactions()
+                idle = interactions
+	
                 for tr, (x, y), good_flag in zip(self.tracks, p1.reshape(-1, 2), good):
                     if not good_flag:
                         continue
@@ -86,26 +174,22 @@ class App:
                         del tr[0]
                     new_tracks.append(tr)
                     cv.circle(vis, (x, y), 2, (0, 255, 0), -1)
-                    if (x - circlex < circleradius) and (y - circley < circleradius):
-                        burst = 1
+                    activated, idle = self.check_interactions(interactions, [Vector(x, y)], circleradius)
+
                 self.tracks = new_tracks
 
                 vis = np.uint8(vis/2.)
                 vis[edge != 0] = (255, 0, 0)
-                #black out video ecept dges and tracked points 
-                vis[edge == 0] = (0, 0, 0)
+                #black out video except edges and tracked points 
+                #vis[edge == 0] = (0, 0, 0)
+                #vis[edge == 0] = (0, 0, 0)
+                #vis[edge == 0] = vis[edge == 0] / 5
 
                 cv.polylines(vis, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
 
-                #for tr in self.tracks:
-                    #if (tr[0] - circlex < circleradius) and (tr[1] - circley < circleradius):
-                #    if np.linalg.norm(Vector(tr[0], tr[1]) - Vector(circlex, circley)) < circleradius:
-                #           burst = 1
-                if not burst:
-                    cv.circle(vis, (circlex, circley), circleradius, (255, 0, 0), 1, 8, 0)
-                    
-                draw_str(vis, (20, 20), 'track count: %d' % len(self.tracks))
-
+                self.draw_idle_interactions(vis, idle, circleradius)
+                #draw_str(vis, (20, 20), 'track count: %d' % len(self.tracks))
+		
             if self.frame_idx % self.detect_interval == 0:
                 mask = np.zeros_like(frame_gray)
                 mask[:] = 255
