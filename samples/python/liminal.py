@@ -56,21 +56,115 @@ MAX_SIZE_FOR_MOVEMENT = 20000
 #(in program cycles) for the program to declare that there is no movement
 MOVEMENT_DETECTED_PERSISTENCE = 100
 
+class Particle(object):
+    """Paticle like Object"""
+
+    def __init__(self, pos, size, color, speed, angle, width, height, gravity, drag=0.999, elasticity=0.75, density=1):
+        #self.surface = surface
+        self.pos = pos
+        self.size = size
+        self.color=color
+        #self.direction = direction
+        self.gravity = gravity
+        self.drag = drag
+        self.elasticity = elasticity
+        # density and mass
+        self.density = 1
+        self.mass = self.density * self.size ** 2
+        # set color according to mass
+        self.color = pygame.Color(200 - density * 10, 200 - density * 10, 255)
+        self.width = width
+        self.height = height
+        self.speed = speed
+        self.angle = angle
+        # initialize things
+
+    def bounce(self):
+        width = self.width
+        height = self.height
+        # right border
+        if self.pos.x > width - self.size:
+            self.pos.x = 2*(width - self.size) - self.pos.x
+            #self.direction.bounce(0)
+            #self.direction *= self.elasticity
+        # left border
+        elif self.pos.x < self.size:
+            self.pos.x = 2*self.size - self.pos.x
+            #self.direction.bounce(0)
+            #self.direction *= self.elasticity
+        # lower border
+        if self.pos.y > height - self.size:
+            self.pos.y = 2*(height - self.size) - self.pos.y
+            # TODO why
+            #self.direction.bounce(math.pi)
+            #self.direction.angle = math.pi - self.direction.angle
+            #self.direction *= self.elasticity
+        # upper border
+        elif self.pos.y < self.size:
+            self.pos.y = 2*self.size - self.pos.y
+            # TODO why
+            #self.direction.bounce(math.pi)
+            #self.direction.angle = math.pi - self.direction.angle
+            #self.direction *= self.elasticity
+
+    def move(self):
+        #self.pos = Vector(self.pos.x + math.sin(self.angle) * self.speed, self.pos.y + math.cos(self.angle) * self.speed)
+        # add gravity
+        self.pos += self.gravity
+        # add drag
+        #self.direction *= self.drag
+
+    def update(self, image):#**kwds):
+        self.move()
+        #self.bounce()
+        #dirtyrect = pygame.draw.circle(self.surface, self.color, Vec2d(int(self.pos.x), int(self.pos.y)), self.size, 1)
+        #cv.circle(image, (self.pos.x, self.pos.y), self.color, 1, 8, 0) #self.size, 1)
+        cv.circle(image, (int(self.pos.x), int(self.pos.y)), 30, (255, 0, 0), 1, 8, 0) #self.size, 1)
+        #return((dirtyrect,))
+
+    def __repr__(self):
+        return("Particle(%(surface)s, %(pos)s, %(size)s, %(color)s)" % self.__dict__)
+
 class App:
     def __init__(self, video_src):
         self.track_len = 10
         self.detect_interval = 5
         self.tracks = []
         self.cam = video.create_capture(video_src)
+        self.width  = self.cam.get(cv.CAP_PROP_FRAME_WIDTH)  # float
+        self.height = self.cam.get(cv.CAP_PROP_FRAME_HEIGHT) # float
         self.frame_idx = 0
         self.game_state = 0
+        self.game_time = 0
+        o1 = Vector(120, 100)
+        o2 = Vector(500,400) 
+        self.objects = [
+            #0: [Vector(120, 100), Vector(500,400)] 
+            [o1, o2]  #0
+	]
+        self.particles = []
+        self.count = 4
+        self.elasticity = 0.75
+        self.drag = 0.999
+        self.gravity = Vector(0.004, math.pi)
+
+    def update_interactions(self, image):
+        areas = self.objects[self.game_state]
+        idx = 0
+        for part in self.particles:
+            #self.particles.remove(part)
+            part.update(image)
+            #self.particles.append(part)
+        for obj in areas:
+            directionx = random.randint(-10,10)# / 100;
+            directiony = random.randint(-10,10)# / 100;
+            areas.remove(obj)
+            obj = Vector(obj.x + directionx, obj.y + directiony)
+            areas.append(obj)
+        #return areas
 
     def set_interactions(self):
-        areas = []
-        switcher = {
-            0: [Vector(120, 100)] 
-	}
-        areas = switcher.get(self.game_state)
+        areas = self.objects[self.game_state]
         return areas
         
     def check_interactions(self, areas, motioncenters, dist):
@@ -94,6 +188,20 @@ class App:
         next_frame = None
         delay_counter = 0
         movement_persistent_counter = 0
+
+        for i in range(self.count):
+            pos = Vector(random.randint(0, self.width), random.randint(0, self.height))
+            color = pygame.Color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), 255)
+            size = 10 + random.randint(0, 20)
+            speed = random.randint(0, 10)
+            angle = random.uniform(0, math.pi * 2)
+            density = random.randint(0, 20)
+            self.particles.append(Particle(pos, size, color, speed, angle, self.width, self.height, self.gravity, self.drag, self.elasticity, density))
+
+        circleradius = 50;
+        interactions = self.set_interactions()
+        idle = interactions
+	
         while True:
             _ret, frame = self.cam.read()
             frame_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
@@ -158,14 +266,7 @@ class App:
                 good = d < 1
                 new_tracks = []
 
-                burst = 0;
-                circlex = 120;
-                circley = 100;
-                circleradius = 50;
-                circlevec = Vector(120, 100)
-                interactions = self.set_interactions()
-                idle = interactions
-	
+
                 for tr, (x, y), good_flag in zip(self.tracks, p1.reshape(-1, 2), good):
                     if not good_flag:
                         continue
@@ -182,12 +283,11 @@ class App:
                 vis[edge != 0] = (255, 0, 0)
                 #black out video except edges and tracked points 
                 #vis[edge == 0] = (0, 0, 0)
-                #vis[edge == 0] = (0, 0, 0)
                 #vis[edge == 0] = vis[edge == 0] / 5
 
                 cv.polylines(vis, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
 
-                self.draw_idle_interactions(vis, idle, circleradius)
+
                 #draw_str(vis, (20, 20), 'track count: %d' % len(self.tracks))
 		
             if self.frame_idx % self.detect_interval == 0:
@@ -200,6 +300,8 @@ class App:
                     for x, y in np.float32(p).reshape(-1, 2):
                         self.tracks.append([(x, y)])
 
+            self.update_interactions(vis)
+            self.draw_idle_interactions(vis, idle, circleradius)
 
             self.frame_idx += 1
             self.prev_gray = frame_gray
