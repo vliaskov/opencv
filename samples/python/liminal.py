@@ -59,12 +59,12 @@ MOVEMENT_DETECTED_PERSISTENCE = 100
 class Particle(object):
     """Paticle like Object"""
 
-    def __init__(self, pos, size, color, speed, angle, width, height, gravity, drag=0.999, elasticity=0.75, density=1):
+    def __init__(self, pos, size, color, direction, width, height, gravity, surface, screen, drag=0.999, elasticity=0.75, density=1):
         #self.surface = surface
         self.pos = pos
         self.size = size
         self.color=color
-        #self.direction = direction
+        self.direction = direction
         self.gravity = gravity
         self.drag = drag
         self.elasticity = elasticity
@@ -75,58 +75,75 @@ class Particle(object):
         self.color = pygame.Color(200 - density * 10, 200 - density * 10, 255)
         self.width = width
         self.height = height
-        self.speed = speed
-        self.angle = angle
+        #self.speed = speed
+        #self.angle = angle
         # initialize things
+        self.surface = surface
+        self.screen = screen
+        self.font = pygame.font.SysFont(None, 24)
+        self.text = self.font.render('hello', True, (100, 255, 250))
+
+
 
     def bounce(self):
         width = self.width
         height = self.height
         # right border
         if self.pos.x > width - self.size:
-            self.pos.x = 2*(width - self.size) - self.pos.x
-            #self.direction.bounce(0)
+            self.pos += Vector(2*(width - self.size) - self.pos.x, self.pos.y)
+            #self.direction += Vector(-2 * self.direction.x, self.direction.y)
             #self.direction *= self.elasticity
         # left border
         elif self.pos.x < self.size:
-            self.pos.x = 2*self.size - self.pos.x
+            self.pos += Vector(2*self.size - self.pos.x, self.pos.y)
+            #self.direction += Vector(-2 * self.direction.x, self.direction.y)
             #self.direction.bounce(0)
             #self.direction *= self.elasticity
         # lower border
         if self.pos.y > height - self.size:
-            self.pos.y = 2*(height - self.size) - self.pos.y
+            self.pos += Vector(self.pos.x, 2*(height - self.size) - self.pos.y)
             # TODO why
             #self.direction.bounce(math.pi)
+            self.direction += Vector(self.direction.x, -2 * self.direction.y)
             #self.direction.angle = math.pi - self.direction.angle
             #self.direction *= self.elasticity
         # upper border
         elif self.pos.y < self.size:
-            self.pos.y = 2*self.size - self.pos.y
+            self.pos = Vector(self.pos.x, 2*self.size - self.pos.y)
             # TODO why
+            #self.direction += Vector(self.direction.x, -2 * self.direction.y)
             #self.direction.bounce(math.pi)
             #self.direction.angle = math.pi - self.direction.angle
             #self.direction *= self.elasticity
 
+    #def check_interactions(self, point):
+        
+
     def move(self):
         #self.pos = Vector(self.pos.x + math.sin(self.angle) * self.speed, self.pos.y + math.cos(self.angle) * self.speed)
         # add gravity
+        self.pos += self.direction
         self.pos += self.gravity
         # add drag
         #self.direction *= self.drag
 
     def update(self, image):#**kwds):
         self.move()
-        #self.bounce()
+        self.bounce()
         #dirtyrect = pygame.draw.circle(self.surface, self.color, Vec2d(int(self.pos.x), int(self.pos.y)), self.size, 1)
         #cv.circle(image, (self.pos.x, self.pos.y), self.color, 1, 8, 0) #self.size, 1)
-        cv.circle(image, (int(self.pos.x), int(self.pos.y)), 30, (255, 0, 0), 1, 8, 0) #self.size, 1)
-        #return((dirtyrect,))
+        cv.circle(image, (int(self.pos.x), int(self.pos.y)), 30, (0, 255, 255), 1, 8, 0) #self.size, 1)
+        #screen.blit(self.text, self.pos))
+
+    def render_text(self):
+        self.surface.blit(self.text, pygame.Rect((self.pos.x - self.size/2, self.pos.y - self.size / 2), (self.pos.x + self.size / 2, self.pos.y + self.size / 2)))
+        self.screen.blit(self.surface, (0,0))
 
     def __repr__(self):
         return("Particle(%(surface)s, %(pos)s, %(size)s, %(color)s)" % self.__dict__)
 
 class App:
-    def __init__(self, video_src):
+    def __init__(self, video_src, screen, surface):
         self.track_len = 10
         self.detect_interval = 5
         self.tracks = []
@@ -146,22 +163,28 @@ class App:
         self.count = 4
         self.elasticity = 0.75
         self.drag = 0.999
-        self.gravity = Vector(0.004, math.pi)
+        self.gravity = Vector(0.001, math.pi)
+        self.screen = screen
+        self.surface = surface
+        self.font = pygame.font.SysFont(None, 24)
+        self.text = self.font.render('hello', True, (100, 255, 250))
+
+        
+    def render_text_objects(self):
+        for part in self.particles:
+            part.render_text()
 
     def update_interactions(self, image):
         areas = self.objects[self.game_state]
         idx = 0
         for part in self.particles:
-            #self.particles.remove(part)
             part.update(image)
-            #self.particles.append(part)
-        for obj in areas:
-            directionx = random.randint(-10,10)# / 100;
-            directiony = random.randint(-10,10)# / 100;
-            areas.remove(obj)
-            obj = Vector(obj.x + directionx, obj.y + directiony)
-            areas.append(obj)
-        #return areas
+        #for obj in areas:
+         #   directionx = random.randint(-10,10)# / 100;
+            #directiony = random.randint(-10,10)# / 100;
+            #areas.remove(obj)
+            #obj = Vector(obj.x + directionx, obj.y + directiony)
+            #areas.append(obj)
 
     def set_interactions(self):
         areas = self.objects[self.game_state]
@@ -180,7 +203,7 @@ class App:
                  
     def draw_idle_interactions(self, image, idleareas, radius):
         for area in idleareas:
-            cv.circle(image, (area.x, area.y), radius, (255, 0, 0), 1, 8, 0)
+            cv.circle(image, (area.x, area.y), radius, (255, 255, 0), 1, 8, 0)
 
     def run(self):
 	# Init frame variables for motion detection
@@ -189,14 +212,25 @@ class App:
         delay_counter = 0
         movement_persistent_counter = 0
 
+        #moving objects
         for i in range(self.count):
             pos = Vector(random.randint(0, self.width), random.randint(0, self.height))
             color = pygame.Color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), 255)
             size = 10 + random.randint(0, 20)
-            speed = random.randint(0, 10)
+            speed = random.randint(0, 4)
             angle = random.uniform(0, math.pi * 2)
             density = random.randint(0, 20)
-            self.particles.append(Particle(pos, size, color, speed, angle, self.width, self.height, self.gravity, self.drag, self.elasticity, density))
+            self.particles.append(Particle(pos, size, color, Vector(speed, angle), self.width, self.height, self.gravity, self.surface, self.screen, self.drag, self.elasticity, density))
+        
+        #immovable objects
+        for i in range(self.count):
+            pos = Vector(random.randint(0, self.width), random.randint(0, self.height))
+            color = pygame.Color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), 255)
+            size = 10 + random.randint(0, 20)
+            speed = 0
+            angle = 0
+            density = random.randint(0, 20)
+            self.particles.append(Particle(pos, size, color, Vector(speed, angle), self.width, self.height, Vector(0, 0), self.surface, self.screen, self.drag, self.elasticity, density))
 
         circleradius = 50;
         interactions = self.set_interactions()
@@ -206,6 +240,8 @@ class App:
             _ret, frame = self.cam.read()
             frame_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
             vis = frame.copy()
+            dark = frame.copy()
+            dark[:,:] = (0, 0, 0)
 
             # Set transient motion detected as false
             transient_movement_flag = False
@@ -245,6 +281,8 @@ class App:
                     #cv.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
                     cvlist = [c]
                     cv.drawContours(vis, cvlist, 0, (0, 0, 255), 3 )
+                    cv.drawContours(dark, cvlist, 0, (0, 0, 255), 3 )
+                    activated, idle = self.check_interactions(interactions, [Vector(x + int(w/2), y + int(h/2))], circleradius)
 
 	    # The moment something moves momentarily, reset the persistent
 	    # movement timer.
@@ -275,17 +313,21 @@ class App:
                         del tr[0]
                     new_tracks.append(tr)
                     cv.circle(vis, (x, y), 2, (0, 255, 0), -1)
-                    activated, idle = self.check_interactions(interactions, [Vector(x, y)], circleradius)
+                    cv.circle(dark, (x, y), 2, (0, 255, 0), -1)
+                    #activated, idle = self.check_interactions(interactions, [Vector(x, y)], circleradius)
 
                 self.tracks = new_tracks
 
                 vis = np.uint8(vis/2.)
                 vis[edge != 0] = (255, 0, 0)
+
+                dark[edge != 0] = (255, 0, 0)
                 #black out video except edges and tracked points 
                 #vis[edge == 0] = (0, 0, 0)
                 #vis[edge == 0] = vis[edge == 0] / 5
 
                 cv.polylines(vis, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
+                cv.polylines(dark, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
 
 
                 #draw_str(vis, (20, 20), 'track count: %d' % len(self.tracks))
@@ -302,10 +344,31 @@ class App:
 
             self.update_interactions(vis)
             self.draw_idle_interactions(vis, idle, circleradius)
+            self.update_interactions(dark)
+            self.draw_idle_interactions(dark, idle, circleradius)
 
             self.frame_idx += 1
             self.prev_gray = frame_gray
-            cv.imshow('lk_track', vis)
+            #cv.imshow('lk_track', vis)
+            #cv.imshow('lk_track', dark)
+            cv.imwrite("frame.jpg", dark)
+            #darkimg = pygame.image.frombuffer(dark, (self.width, self.height), "RGB")
+            darkimg = pygame.image.load("frame.jpg")
+            self.surface.blit(darkimg, pygame.Rect((0,0), (self.screen.get_size()[0], self.screen.get_size()[1]) ))
+            self.screen.blit(self.surface, (0,0))
+
+            doorimg = pygame.image.load("castledoors.png") #cv.imread("door.jpeg")
+            doorimg = doorimg.convert()
+            doorRect = pygame.Rect((10,10),(20, 20))
+            self.surface.blit(doorimg, doorRect)
+            self.screen.blit(self.surface, (0,0))
+
+            self.render_text_objects()
+            #self.surface.blit(self.text, pygame.Rect((600,400), (650, 500)))
+            #self.screen.blit(self.surface, (0,0))
+
+            #pygame.display.flip()
+            pygame.display.update()
 
             ch = cv.waitKey(1)
             if ch == 27:
@@ -318,7 +381,16 @@ def main():
     except:
         video_src = 0
 
-    App(video_src).run()
+    pygame.init()
+    screen = pygame.display.set_mode((720, 480))
+    pygame.display.set_caption('My game')
+
+    background = pygame.Surface(screen.get_size())
+    background = background.convert()
+    background.fill((250, 250, 250))
+    #pygame.display.flip()
+
+    App(video_src, screen, background).run()
     print('Done')
 
 
